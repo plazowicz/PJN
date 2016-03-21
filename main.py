@@ -115,7 +115,10 @@ def search_in_chunk(chunk):
     best_matching_word = word
     metric = LevenstheinWithRespectToErrors()
     for train_word in chunk:
-        dist = metric(word, train_word)
+        try:
+            dist = metric(word, train_word)
+        except UnicodeWarning as e:
+            pass
         if dist < smallest_dist:
             smallest_dist = dist
             best_matching_word = train_word
