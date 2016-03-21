@@ -52,7 +52,7 @@ def _edit_dist_step(lev, i, j, s1, s2, transpositions=False, transposition_punis
         if s1[i - 2] == c2 and s2[j - 2] == c1:
             d = lev[i - 2][j - 2] + transposition_punishment
 
-    dglobal diacritical_chars
+    global diacritical_chars
     global diacritical_error_punishment
 
     if c < a and c < b and c < d:
