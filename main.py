@@ -1,6 +1,7 @@
 # coding=utf-8
 import cPickle
 from multiprocessing import Pool
+from collections import defaultdict
 
 __author__ = 'mateuszopala'
 
@@ -15,7 +16,12 @@ def levensthein_dist(s1, s2):
 
 TEST_WORD = None
 
-diacritical_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż']
+diacritical_chars = {'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z'}
+
+
+# diacritical_chars_opposite = defaultdict(list)
+# for k, v in diacritical_chars:
+#     diacritical_chars_opposite[v].append(k)
 
 
 def _edit_dist_init(len1, len2):
@@ -45,10 +51,14 @@ def _edit_dist_step(lev, i, j, s1, s2, transpositions=False, transposition_punis
     if transpositions and i > 1 and j > 1:
         if s1[i - 2] == c2 and s2[j - 2] == c1:
             d = lev[i - 2][j - 2] + transposition_punishment
-    # global diacritical_chars
-    # global diacritical_error_punishment
-    # if c < a and c < b and c < d and c in diacritical_chars:
-    #     c -= diacritical_error_punishment
+
+    dglobal diacritical_chars
+    global diacritical_error_punishment
+
+    if c < a and c < b and c < d:
+        if c1 in diacritical_chars and c2 == diacritical_chars[c1] or c2 in diacritical_chars and c1 == \
+                diacritical_chars[c1]:
+            c -= diacritical_error_punishment
     # pick the cheapest
     lev[i][j] = min(a, b, c, d)
 
@@ -115,10 +125,7 @@ def search_in_chunk(chunk):
     best_matching_word = word
     metric = LevenstheinWithRespectToErrors()
     for train_word in chunk:
-        try:
-            dist = metric(word, train_word)
-        except UnicodeWarning as e:
-            pass
+        dist = metric(word, train_word)
         if dist < smallest_dist:
             smallest_dist = dist
             best_matching_word = train_word
