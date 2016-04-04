@@ -2,7 +2,9 @@
 import cPickle
 from multiprocessing import Pool
 from collections import defaultdict
-
+from nltk.metrics import edit_distance
+from Levenshtein import editops
+import codecs
 __author__ = 'mateuszopala'
 
 czech_bug_punishment = 0.5
@@ -16,93 +18,24 @@ def levensthein_dist(s1, s2):
 
 TEST_WORD = None
 
-diacritical_chars = {'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z'}
-
-
-# diacritical_chars_opposite = defaultdict(list)
-# for k, v in diacritical_chars:
-#     diacritical_chars_opposite[v].append(k)
-
-
-def _edit_dist_init(len1, len2):
-    lev = []
-    for i in range(len1):
-        lev.append([0] * len2)  # initialize 2D array to zero
-    for i in range(len1):
-        lev[i][0] = i  # column 0: 0,1,2,3,4,...
-    for j in range(len2):
-        lev[0][j] = j  # row 0: 0,1,2,3,4,...
-    return lev
-
-
-def _edit_dist_step(lev, i, j, s1, s2, transpositions=False, transposition_punishment=0.5):
-    c1 = s1[i - 1]
-    c2 = s2[j - 1]
-
-    # skipping a character in s1
-    a = lev[i - 1][j] + 1
-    # skipping a character in s2
-    b = lev[i][j - 1] + 1
-    # substitution
-    c = lev[i - 1][j - 1] + (c1 != c2)
-
-    # transposition
-    d = c + 1  # never picked by default
-    if transpositions and i > 1 and j > 1:
-        if s1[i - 2] == c2 and s2[j - 2] == c1:
-            d = lev[i - 2][j - 2] + transposition_punishment
-
-    global diacritical_chars
-    global diacritical_error_punishment
-
-    if c < a and c < b and c < d:
-        if c1 in diacritical_chars and c2 == diacritical_chars[c1] or c2 in diacritical_chars and c1 == \
-                diacritical_chars[c1]:
-            c -= diacritical_error_punishment
-    # pick the cheapest
-    lev[i][j] = min(a, b, c, d)
-
-
-def edit_distance(s1, s2, transpositions=False, transposition_punishment=0.5):
-    """
-    Calculate the Levenshtein edit-distance between two strings.
-    The edit distance is the number of characters that need to be
-    substituted, inserted, or deleted, to transform s1 into s2.  For
-    example, transforming "rain" to "shine" requires three steps,
-    consisting of two substitutions and one insertion:
-    "rain" -> "sain" -> "shin" -> "shine".  These operations could have
-    been done in other orders, but at least three steps are needed.
-
-    This also optionally allows transposition edits (e.g., "ab" -> "ba"),
-    though this is disabled by default.
-
-    :param s1, s2: The strings to be analysed
-    :param transpositions: Whether to allow transposition edits
-    :type s1: str
-    :type s2: str
-    :type transpositions: bool
-    :rtype int
-    """
-    # set up a 2-D array
-    len1 = len(s1)
-    len2 = len(s2)
-    lev = _edit_dist_init(len1 + 1, len2 + 1)
-
-    # iterate over the array
-    for i in range(len1):
-        for j in range(len2):
-            _edit_dist_step(lev, i + 1, j + 1, s1, s2, transpositions=transpositions,
-                            transposition_punishment=transposition_punishment)
-    return lev[len1][len2]
+diacritical_chars = {u'ą': u'a', u'ć': u'c', u'ę': u'e', u'ł': u'l', u'ń': u'n', u'ó': u'o', u'ś': u's', u'ź': u'z',
+                     u'ż': u'z'}
+diacritical_chars.update({v: k for k, v in diacritical_chars.iteritems()})
 
 
 class LevenstheinWithRespectToErrors(object):
     def __init__(self):
-        self.exceptions_ow = ["skuwka", "wsuwka", "zasuwka"]
+        self.exceptions_ow = [u"skuwka", u"wsuwka", u"zasuwka"]
 
     def __call__(self, s1, s2):
-        base_dist = edit_distance(s1, s2, transpositions=True, transposition_punishment=czech_bug_punishment)
-        base_dist -= self.find_all_occurrences_of_substring("uw", s1) * (1 - ow_punishment)
+        ops = editops(s1, s2)
+        replacements = [(spos, dpos) for op_name, spos, dpos in ops if op_name == "replace"]
+        count = 0
+        for spos, dpos in replacements:
+            if s1[spos] in diacritical_chars and diacritical_chars[s1[spos]] == s2[dpos]:
+                count += 1
+        base_dist = len(ops) - (1 - diacritical_error_punishment) * count
+        base_dist -= self.find_all_occurrences_of_substring(u"uw", s1) * (1 - ow_punishment)
         return base_dist
 
     def find_all_occurrences_of_substring(self, sub_str, s1):
@@ -140,7 +73,7 @@ def chunks(l, n):
 
 class WordCorrector(object):
     def __init__(self, metric, n_jobs=16):
-        with open('data/formy_utf8.txt', 'r') as f:
+        with codecs.open('data/formy_utf8.txt', 'r', 'utf-8') as f:
             self.words = [word for word in f.read().splitlines()]
         with open('data/formy.pkl', 'r') as f:
             self.words_hash = cPickle.load(f)
@@ -179,8 +112,6 @@ class WordCorrector(object):
         return best_matching_word
 
 
-# TODO ogarnac diakrytyczne i odpalic na softlayer
-
 def get_word_corrector_with_respect_to_errors():
     metric = LevenstheinWithRespectToErrors()
     return WordCorrector(metric)
@@ -192,7 +123,7 @@ def get_word_corrector_with_levensthein_distance():
 
 if __name__ == "__main__":
     word_corrector = get_word_corrector_with_respect_to_errors()
-    word_to_be_corrected = u"mąma"
+    word_to_be_corrected = u"pięśc"
     import time
 
     print "correcting..."
